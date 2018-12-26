@@ -1,19 +1,28 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[1]:
+# In[ ]:
+
+
+from numpy.random import seed
+seed(3363)
+from tensorflow import set_random_seed
+set_random_seed(3363)
+
+
+# In[ ]:
 
 
 from keras.models import Sequential, load_model
 from keras.preprocessing.image import ImageDataGenerator
 from keras.layers import Dense, Activation, Convolution2D, MaxPooling2D, Flatten, InputLayer, LeakyReLU, BatchNormalization, Dropout, GlobalAveragePooling2D
 from keras.applications.densenet import DenseNet121
-from sklearn.metrics import roc_curve, auc
+from sklearn.metrics import roc_auc_score
 from dataset_batch import load_train_data, load_test_data
 import tensorflow as tf
 
 
-# In[2]:
+# In[ ]:
 
 
 def as_keras_metric(method):
@@ -31,7 +40,7 @@ def as_keras_metric(method):
     return wrapper
 
 class DenseNetModel():
-    
+
     def __init__(self, input_dim=(224,224,3), output_dim=14, learning_rate=0.00001, epochs=5, drop_out=0.3):
 
         # parms:
@@ -40,12 +49,12 @@ class DenseNetModel():
         self.learning_rate = learning_rate
         self.epochs = epochs
         self.drop_out = drop_out
-    
+
         # Define DenseNet
         self.model = Sequential()
 
         base_model = DenseNet121(weights='imagenet', include_top=False, pooling='avg', input_shape=self.input_dim)
-        
+
         # Freeze the model first
         base_model.trainable = False
 
@@ -67,49 +76,39 @@ class DenseNetModel():
         # Image augmentation
         self.core_idg = ImageDataGenerator(samplewise_center=True, 
                               samplewise_std_normalization=True, 
-                              horizontal_flip = True, 
-                              vertical_flip = False, 
-                              height_shift_range= 0.05, 
-                              width_shift_range=0.1, 
-                              rotation_range=5, 
-                              shear_range = 0.1,
-                              fill_mode = 'reflect',
-                              zoom_range=0.15)
+                              horizontal_flip=True, 
+                              vertical_flip=False, 
+                              height_shift_range=0.05, 
+                              width_shift_range=0.15, 
+                              rotation_range=10, 
+                              shear_range=0.2,
+                              fill_mode='constant',
+                              cval=1,
+                              zoom_range=[0.85,1.20])
 
     # Data standardization
     def standardize(self, x):
         self.core_idg.fit(x)
         return
-        
-    def fit(self, x, y, vx, vy):
 
-        # fit the data
+    # fit the data
+    def fit(self, x, y, vx, vy):
         print ("Start Training model")
         X_train, y_train, X_test, y_test = x, y, vx, vy
         hist = self.model.fit_generator(
-            (self.core_idg.flow(X_train, y_train, batch_size = 32)),
+            (self.core_idg.flow(X_train, y_train, batch_size = 25)),
             validation_data = self.core_idg.flow(X_test, y_test), epochs=self.epochs)
-        
         print ("Done Training model")
-        print ("AVG AUC:", self.score(X_test, y_test))
         return hist
-    
+
     # data did preprocessing            
     def inference(self, x):
         return self.model.predict(x)
 
+    # make predicition
     def score(self, x, y):
-        
-        # make predicition
         y_pred = self.predict(x)
-        auc_val = 0.0
-
-        # calculate score
-        for idx in range(self.output_dim):
-            fpr, tpr, _ = roc_curve(y[:,idx].astype(int), y_pred[:,idx])
-            auc_val += auc(fpr, tpr)
-        
-        return auc_val / self.output_dim
+        return roc_auc_score(y, y_pred, average = "macro")
 
     # pain data without preprocessing
     def predict(self, x):
@@ -129,19 +128,20 @@ class DenseNetModel():
         return
 
 
-# In[3]:
+# In[ ]:
 
 
 if __name__ == "__main__":
-    
-    model = DenseNetModel(input_dim=(224,224,3), epochs=5)
 
-    X_vali, y_vali = load_train_data(min_cnt=9500, max_cnt=10002)
-    for iter in range(10):
-        for base in range(0, 9500, 500):
-            X_train, y_train = load_train_data(min_cnt=base, max_cnt=base+499)
+    model = DenseNetModel(input_dim=(224,224,3), epochs=5, drop_out=0.4)
+
+    X_vali, y_vali = load_train_data(min_cnt=0, max_cnt=800)
+    for itera in range(40):
+        for base in range(800, 10001, 2400):
+            X_train, y_train = load_train_data(min_cnt=base, max_cnt=base+2399)
             model.standardize(X_train)
             model.fit(X_train, y_train, X_vali, y_vali)
+        print("Iter",itera,"AVG AUC:",model.score(X_vali, y_vali))
 
     # Saving model
     model.save_weight()
