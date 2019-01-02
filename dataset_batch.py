@@ -7,7 +7,7 @@ import glob
 import cv2
 from matplotlib import pyplot as plt
 
-def load_train_data(train_img_folder = './data/data/rez224/', path = './data/ntu_final_2018/train.csv',
+def load_train_data(train_img_folder = './data/data/rez288/', path = './data/ntu_final_2018/train.csv',
     min_cnt = 0, max_cnt = 10001):
 
     train_df = pd.read_csv(path)
